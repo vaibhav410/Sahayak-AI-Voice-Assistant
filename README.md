@@ -32,6 +32,31 @@
 > 
 > *Add your video demo link here or upload a GIF to the `static/assets/` folder to showcase the assistant's real-time interaction.*
 
+## 🚀 Deployment (Free)
+
+Sahayak AI is optimized for deployment on **Render.com**. Follow these steps to get your assistant live:
+
+### 1. Push to GitHub
+Ensure all your latest changes are pushed to your repository.
+
+### 2. Setup on Render
+- Create a **New > Web Service** on [Render](https://dashboard.render.com).
+- Connect your GitHub repository.
+- **Runtime**: Python
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `python start_server.py` (or let the `Procfile` handle it).
+
+### 3. Environment Variables
+Add all keys from your local `.env` to the Render **Environment** dashboard:
+- `GEMINI_API_KEY`
+- `QDRANT_URL` & `QDRANT_API_KEY`
+- `VAPI_API_KEY` & `ASSISTANT_ID`
+- `NGROK_URL`: Set this to your new Render URL (e.g., `https://sahayak-ai.onrender.com`).
+
+### 4. Final Activation
+Once the build is successful, trigger the Vapi update by calling:
+`https://your-app.onrender.com/api/vapi/setup-assistant` (via browser or CURL).
+
 ## 🛠️ Tech Stack
 
 | Component | Technical Details |
