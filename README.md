@@ -1,5 +1,7 @@
 <div align="center">
 
+![Sahayak AI Banner](static/assets/sahayak_banner.png)
+
 # 🎙️ Sahayak AI
 ### Empowering Accessibility through AI Sight and Memory
 
@@ -22,6 +24,13 @@
 - **📖 Robust OCR**: Instant extraction and reading of text from documents, labels, and signs.
 - **🧠 Personalized Memory**: Persistent context retention—it remembers your preferences and past interactions.
 - **🇮🇳 Multilingual Support**: Seamlessly communicates in both English and Hindi.
+
+## 📺 Video Demo
+
+> [!TIP]
+> **Check out Sahayak AI in action!**
+> 
+> *Add your video demo link here or upload a GIF to the `static/assets/` folder to showcase the assistant's real-time interaction.*
 
 ## 🛠️ Tech Stack
 
