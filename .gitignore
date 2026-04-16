@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+venv/
+.venv/
+node_modules/
+*.egg-info/
+dist/
+build/
+ngrok.exe
+ngrok.zip
+scratch/
+*.jpg
+*.png
+!static/favicon.ico
+!static/logo.png
