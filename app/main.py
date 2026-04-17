@@ -84,6 +84,27 @@ async def chat_with_image(req: dict):
 
 def process_sahayak_pipeline(user_id, message_content, camera_index=0):
     """The core intelligence pipeline for Sahayak AI."""
+    # Check if running on Vercel (serverless)
+    is_serverless = os.getenv("VERCEL") == "1" or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    
+    if is_serverless:
+        # Serverless mode - no camera, only chat
+        try:
+            translated_text = translate_to_english(message_content)
+            memory_context = ""
+            intent = "chat"  # Force chat mode on serverless
+            
+            if intent == "help":
+                reply = "I'm Sahayak AI. I can chat with you, but on this website version I can't access camera. Use the mobile app for camera features."
+            else:
+                reply = generate_response(translated_text, memory_context)
+            
+            return reply
+        except Exception as e:
+            print(f"[ERROR] Serverless pipeline failed: {e}")
+            return "I'm having trouble connecting. Please try again."
+    
+    # Local/server mode - full features
     try:
         print(f"[PIPELINE] Input from {user_id}: {message_content}")
         
