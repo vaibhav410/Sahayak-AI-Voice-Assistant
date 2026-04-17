@@ -1,6 +1,7 @@
 <div align="center">
 
-![Sahayak AI Banner](static/assets/sahayak_banner.png)
+<img width="1077" height="862" alt="image" src="https://github.com/user-attachments/assets/3f765385-7f11-4ec7-b014-b9af6108d359" />
+
 
 # 🎙️ Sahayak AI
 ### Empowering Accessibility through AI Sight and Memory
@@ -24,20 +25,6 @@
 - **📖 Robust OCR**: Instant extraction and reading of text from documents, labels, and signs.
 - **🧠 Personalized Memory**: Persistent context retention—it remembers your preferences and past interactions.
 - **🇮🇳 Multilingual Support**: Seamlessly communicates in both English and Hindi.
-
-## 📺 Video Demo
-
-> [!TIP]
-> **Check out Sahayak AI in action!**
-> 
-> *Add your video demo link here or upload a GIF to the `static/assets/` folder to showcase the assistant's real-time interaction.*
-
-## 🚀 Deployment (Free)
-
-Sahayak AI is optimized for deployment on **Render.com**. Follow these steps to get your assistant live:
-
-### 1. Push to GitHub
-Ensure all your latest changes are pushed to your repository.
 
 ### 2. Setup on Render
 - Create a **New > Web Service** on [Render](https://dashboard.render.com).
