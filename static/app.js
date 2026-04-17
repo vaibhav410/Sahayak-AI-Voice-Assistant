@@ -23,10 +23,24 @@ function toast(t) {
 }
 
 function setDot(id, s) {
-    $(id).className = 'dot ' + (s === 'ok' ? 'dg' : s === 'err' ? 'dr' : 'dy');
+    const el = $(id);
+    if (!el) return;
+    
+    // Default Tailwind colors for dots
+    const colors = {
+        ok: 'bg-secondary',
+        err: 'bg-error',
+        pending: 'bg-tertiary'
+    };
+    
+    el.className = `w-2 h-2 rounded-full ${colors[s] || colors.pending}`;
 }
 
 function addMsg(role, text) {
+    // Hide empty state if visible
+    const empty = $('empty-state');
+    if (empty) empty.remove();
+
     const d = document.createElement('div');
     d.className = 'm ' + (role === 'user' ? 'mu' : 'ma');
     d.textContent = text;
@@ -102,17 +116,18 @@ async function sendMsg() {
 async function loadMemory() {
     const res = await apiCall(`/api/memory/${userID}`, 'GET');
     if (res && res.memories) {
-        $('membar').querySelectorAll('.mc').forEach(e => e.remove());
+        // Clear old items except placeholder
+        $('membar').querySelectorAll('.mem-item').forEach(e => e.remove());
         const ph = $('memph');
         if (res.memories.length === 0) {
-            ph.style.display = 'inline';
+            ph.classList.remove('hidden');
         } else {
-            ph.style.display = 'none';
+            ph.classList.add('hidden');
             res.memories.slice(-5).forEach(m => {
-                const span = document.createElement('span');
-                span.className = 'mc';
-                span.textContent = m.content.length > 25 ? m.content.slice(0, 25) + '…' : m.content;
-                $('membar').appendChild(span);
+                const div = document.createElement('div');
+                div.className = 'mem-item p-3 bg-white/50 border border-slate-100 rounded-2xl text-xs text-on-surface-variant font-medium flex items-center gap-2 animate-fadeIn';
+                div.innerHTML = `<span class="material-symbols-outlined text-primary text-xs" style="font-size:14px">memory</span> <span>${m.content.length > 40 ? m.content.slice(0, 40) + '…' : m.content}</span>`;
+                $('membar').appendChild(div);
             });
         }
         setDot('qd', 'ok');
@@ -122,20 +137,26 @@ async function loadMemory() {
 // ── Vapi Voice Call ─────────────────────
 function initVapi() {
     try {
+        if (typeof Vapi === 'undefined') {
+            console.warn('Vapi SDK not loaded yet, retrying...');
+            setTimeout(initVapi, 500);
+            return;
+        }
         vapiInst = new Vapi(CFG.vapi_key);
 
         vapiInst.on('call-start', () => {
             vapiOn = true;
-            $('vbtn').classList.add('on');
-            $('vbtn').innerHTML = '🔴';
+            $('vbtn').classList.add('btn-pulse');
+            $('vbtn').querySelector('span').textContent = 'call_end';
+            $('vbtn').classList.add('bg-error-container', 'text-error');
             setDot('vd', 'ok');
             toast('Voice call connected');
         });
 
         vapiInst.on('call-end', () => {
             vapiOn = false;
-            $('vbtn').classList.remove('on');
-            $('vbtn').innerHTML = '📞';
+            $('vbtn').classList.remove('btn-pulse', 'bg-error-container', 'text-error');
+            $('vbtn').querySelector('span').textContent = 'call';
             toast('Call ended');
         });
 
@@ -180,7 +201,7 @@ function initFallbackMic() {
 
     recognition.onend = () => {
         micOn = false;
-        $('mbtn').classList.remove('on');
+        $('mbtn').classList.remove('bg-error-container', 'text-error', 'btn-pulse');
     };
 }
 
@@ -209,16 +230,27 @@ $('mbtn').onclick = () => {
     else {
         recognition.start();
         micOn = true;
-        $('mbtn').classList.add('on');
+        $('mbtn').classList.add('bg-error-container', 'text-error', 'btn-pulse');
         toast('Listening...');
     }
 };
 
-document.querySelectorAll('.tab').forEach(tab => {
+document.querySelectorAll('.tab, .mobile-tab').forEach(tab => {
     tab.onclick = () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        currentMode = tab.dataset.mode;
+        // Clear all active states
+        document.querySelectorAll('.tab, .mobile-tab, .mobile-tab div').forEach(t => {
+            t.classList.remove('bg-indigo-50', 'dark:bg-indigo-900/40', 'text-indigo-800', 'dark:text-indigo-100');
+            t.classList.add('text-slate-500', 'dark:text-slate-400');
+        });
+        
+        // Match both desktop and mobile tabs for the same mode
+        const mode = tab.dataset.mode || tab.parentElement.dataset.mode;
+        document.querySelectorAll(`[data-mode="${mode}"]`).forEach(t => {
+            t.classList.add('bg-indigo-50', 'dark:bg-indigo-900/40', 'text-indigo-800', 'dark:text-indigo-100');
+            t.classList.remove('text-slate-500', 'dark:text-slate-400');
+        });
+
+        currentMode = mode;
         toast(`Switched to ${currentMode} mode`);
         
         // Auto-trigger for specific modes
