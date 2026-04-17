@@ -1,6 +1,7 @@
 <div align="center">
 
-![Sahayak AI Banner](static/assets/sahayak_banner.png)
+<img width="1077" height="862" alt="image" src="https://github.com/user-attachments/assets/3f765385-7f11-4ec7-b014-b9af6108d359" />
+
 
 # 🎙️ Sahayak AI
 ### Empowering Accessibility through AI Sight and Memory
