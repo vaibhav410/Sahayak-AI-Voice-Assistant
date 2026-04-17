@@ -7,11 +7,12 @@ SYSTEM_PROMPT = """You are Sahayak AI, a helpful voice assistant for visually im
 
 RULES:
 1. ALWAYS use the sahayak_chat tool for EVERY user message
-2. NEVER answer directly without using the tool
+2. NEVER answer directly without using the tool  
 3. Keep responses SHORT (1-2 sentences)
 4. Respond in Hindi if user speaks Hindi, English otherwise
+5. Do NOT try to process any images or clipboard content
 
-When user speaks, call sahayak_chat with their message."""
+When user speaks, call sahayak_chat with their message only."""
 
 
 def _headers():
@@ -27,8 +28,8 @@ async def create_or_update_assistant() -> dict:
     payload = {
         "name": "Sahayak AI",
         "model": {
-            "provider": "openai",
-            "model": "gpt-4o",
+            "provider": "google",
+            "model": "gemini-2.0-flash",
             "systemPrompt": SYSTEM_PROMPT,
             "temperature": 0.7,
             "maxTokens": 300,

@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
+import json
 
 from app.assistant import (
     translate_to_english, 
@@ -30,7 +31,7 @@ except ImportError:
 
 app = FastAPI(title="Sahayak AI", description="Voice Accessibility Assistant")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory="public"), name="static")
 
 class ChatRequest(BaseModel):
     user_id: str
@@ -127,7 +128,13 @@ def process_sahayak_pipeline(user_id, message_content, camera_index=0):
 
     except Exception as e:
         print(f"[ERROR] Pipeline crashed: {e}")
-        return "I encountered a technical error while processing your request. Please try again or check your camera/API settings."
+        error_msg = str(e).lower()
+        # Provide user-friendly error messages
+        if "clipboard" in error_msg:
+            return "I can't process clipboard images. Please use the camera button to take a photo."
+        elif "image" in error_msg and "support" in error_msg:
+            return "The AI model doesn't support images directly. Please use the camera or upload button."
+        return "I encountered a technical error while processing your request. Please try again."
 
 @app.get("/api/memory/{user_id}")
 async def get_user_memory(user_id: str):
@@ -136,11 +143,11 @@ async def get_user_memory(user_id: str):
 
 @app.get("/")
 async def serve_frontend():
-    return FileResponse("static/index.html")
+    return FileResponse("public/index.html")
 
 @app.get("/favicon.ico")
 async def favicon():
-    return FileResponse("static/favicon.ico")
+    return FileResponse("public/favicon.ico")
 
 # Vapi callback endpoint - receives voice input from Vapi
 @app.post("/chat")
@@ -148,8 +155,10 @@ async def vapi_chat_tool(request: Request):
     """Endpoint for Vapi custom tool callback."""
     try:
         body = await request.json()
-    except:
-        body = {}
+        print(f"[VAPI] Received request: {body}")
+    except Exception as e:
+        print(f"[ERROR] Vapi request parse failed: {e}")
+        return {"result": "Sorry, I couldn't understand that request."}
     
     message_content = ""
     user_id = "vapi_user"
@@ -157,18 +166,30 @@ async def vapi_chat_tool(request: Request):
     # Handle Vapi function call format
     if "arguments" in body:
         args = body.get("arguments", {})
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except:
+                pass
         if isinstance(args, dict):
             message_content = args.get("message", "")
     
-    # Handle standard message format
+    # Handle standard message format - skip any image/clipboard content
     if not message_content:
         msg = body.get("message", {})
         if isinstance(msg, dict):
             content = msg.get("content", "")
             if isinstance(content, list):
-                message_content = " ".join(
-                    c.get("text", "") for c in content if isinstance(c, dict)
-                )
+                # Extract only text content, ignore images
+                for c in content:
+                    if isinstance(c, dict):
+                        # Skip any image or clipboard content
+                        if c.get("type") in ["image_url", "image"]:
+                            continue
+                        text = c.get("text", "")
+                        if text:
+                            message_content = text
+                            break
             else:
                 message_content = str(content)
         else:
@@ -181,12 +202,20 @@ async def vapi_chat_tool(request: Request):
     if not message_content or not message_content.strip():
         return {"result": "I didn't catch that. Please speak again."}
     
-    print(f"[VAPI] Input: {message_content}")
+    print(f"[VAPI] User ({user_id}): {message_content}")
     
-    # Execute standardized pipeline
-    reply = process_sahayak_pipeline(user_id, message_content)
-    
-    return {"result": reply}
+    # Execute standardized pipeline with error handling
+    try:
+        reply = process_sahayak_pipeline(user_id, message_content)
+        print(f"[VAPI] Response: {reply[:100]}...")
+        return {"result": reply}
+    except Exception as e:
+        print(f"[ERROR] Pipeline failed: {e}")
+        error_msg = str(e)
+        # Handle specific errors gracefully
+        if "clipboard" in error_msg.lower() or "image" in error_msg.lower():
+            return {"result": "I can't process images directly. Please use the camera or upload button."}
+        return {"result": "I'm sorry, I encountered an error. Please try again."}
 
 @app.post("/api/vapi/setup-assistant")
 async def vapi_setup_assistant():

@@ -3,8 +3,23 @@ import cv2
 import pytesseract
 from PIL import Image
 from deep_translator import GoogleTranslator
-import google.generativeai as genai
+import warnings
+warnings.filterwarnings("ignore")
+
+# Try new google.genai package, fallback to deprecated
+try:
+    import google.genai as genai_client
+    USE_NEW_GENAI = True
+    print("[INFO] Using google.genai package")
+except ImportError:
+    import google.generativeai as genai_client
+    USE_NEW_GENAI = False
+    print("[INFO] Using deprecated google.generativeai package")
+
 from dotenv import load_dotenv
+
+# Import configuration
+from app.config import GEMINI_MODEL, EMBEDDING_MODEL
 
 load_dotenv()
 
@@ -25,32 +40,87 @@ pytesseract.pytesseract.tesseract_cmd = get_tesseract_path() or r"C:\Program Fil
 
 # Initialize Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2", GEMINI_API_KEY)  # Second key for more quota
+GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2", GEMINI_API_KEY)
 
-# Model references
-MODEL_V3 = None
+# Model references - store (client, model_name) tuples
 MODEL_20 = None
 MODEL_15 = None
 MODEL_LITE = None
 
+# Shared client for new API
+_genai_client = None
+
+def _call_generate(model_ref, prompt, contents=None):
+    """Helper to generate content with either old or new API."""
+    if USE_NEW_GENAI:
+        client, model_name = model_ref
+        return client.models.generate_content(model=model_name, contents=contents or [prompt])
+    else:
+        return model_ref.generate_content(prompt)
+
+def _call_generate_with_image(model_ref, prompt, image_data):
+    """Helper to generate content with image using either old or new API."""
+    if USE_NEW_GENAI:
+        client, model_name = model_ref
+        from google.genai import types
+        contents = [
+            types.Content(
+                parts=[types.Part(text=prompt)]
+            ),
+            types.Content(
+                parts=[types.Part(inline_data=types.Blob(data=image_data, mime_type='image/jpeg'))]
+            )
+        ]
+        return client.models.generate_content(model=model_name, contents=contents)
+    else:
+        return model_ref.generate_content(
+            contents=[{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": image_data}}]
+        )
+
+def init_model(model_name):
+    """Initialize a single model with error handling"""
+    global _genai_client
+    try:
+        if USE_NEW_GENAI:
+            if _genai_client is None:
+                _genai_client = genai_client.Client(api_key=GEMINI_API_KEY)
+            model_ref = (_genai_client, model_name)
+        else:
+            genai_client.configure(api_key=GEMINI_API_KEY)
+            model_ref = genai_client.GenerativeModel(model_name)
+        print(f"[OK] {model_name} ready")
+        return model_ref
+    except Exception as e:
+        print(f"[WARN] {model_name} failed: {e}")
+        return None
+
 if GEMINI_API_KEY:
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        # Prioritize Gemini 3 if available, fallback to 2.0 and 1.5
-        MODEL_V3 = genai.GenerativeModel('gemini-3-flash-preview')
-        MODEL_20 = genai.GenerativeModel('gemini-2.0-flash')
-        MODEL_15 = genai.GenerativeModel('gemini-1.5-flash')
-        MODEL_LITE = genai.GenerativeModel('gemini-2.0-flash-lite')
-        print("[OK] Gemini AI connected! (Models initialized)")
+        # Initialize each model independently
+        MODEL_20 = init_model('gemini-2.5-flash')
+        MODEL_15 = init_model('gemini-2.5-flash')
+        MODEL_LITE = init_model('gemini-2.5-flash')
+        
+        if MODEL_20 or MODEL_15 or MODEL_LITE:
+            print("[OK] Gemini AI connected!")
+        else:
+            print("[ERROR] No Gemini models available")
     except Exception as e:
         print(f"[ERROR] Gemini setup failed: {e}")
 
 # Configure second key for quota fallback
+_genai_client_2 = None
+
 if GEMINI_API_KEY_2 and GEMINI_API_KEY_2 != GEMINI_API_KEY:
     try:
-        import google.generativeai as genai2
-        genai2.configure(api_key=GEMINI_API_KEY_2)
-        _FALLBACK_MODEL = genai2.GenerativeModel('gemini-1.5-flash')
+        if USE_NEW_GENAI:
+            import google.genai as genai2
+            _genai_client_2 = genai2.Client(api_key=GEMINI_API_KEY_2)
+            _FALLBACK_MODEL = (_genai_client_2, 'gemini-2.5-flash')
+        else:
+            import google.generativeai as genai2
+            genai2.configure(api_key=GEMINI_API_KEY_2)
+            _FALLBACK_MODEL = genai2.GenerativeModel('gemini-1.5-flash')
         print("[OK] Fallback API key configured!")
     except Exception as e:
         print(f"[WARN] Fallback key failed: {e}")
@@ -60,18 +130,45 @@ else:
 
 # ── EMBEDDING FUNCTION ──────────────────
 def get_gemini_embedding(text):
-    """Uses Gemini text-embedding-004 to represent text as a vector."""
-    try:
-        if not text: return None
-        result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=text,
-            task_type="retrieval_query"
-        )
-        return result['embedding']
-    except Exception as e:
-        print(f"[ERROR] Embedding failed: {e}")
-        return None
+    """Uses Gemini embedding model to represent text as a vector."""
+    if not text: return None
+    
+    # Try embedding model from config
+    embedding_models = [EMBEDDING_MODEL]
+    
+    for model_name in embedding_models:
+        try:
+            if USE_NEW_GENAI:
+                result = _genai_client.embed_content(
+                    model=model_name,
+                    contents=[text],
+                    config={"task_type": "retrieval_query"}
+                )
+                return result.embedding[0].values
+            else:
+                result = genai_client.embed_content(
+                    model=model_name,
+                    content=text,
+                    task_type="retrieval_query"
+                )
+                return result['embedding']
+        except Exception as e:
+            print(f"[WARN] Embedding API failed: {e}")
+            break  # Don't retry, use fallback
+    
+    # Fallback: Simple hash-based embedding (768-dim for Qdrant compatibility)
+    print("[INFO] Using fallback embedding")
+    import hashlib
+    
+    # Create deterministic embedding from text hash
+    hash_bytes = hashlib.sha256(text.encode()).digest()
+    # Expand to 768 dimensions using repeated hashing
+    embedding = []
+    for i in range(24):  # 24 * 32 = 768
+        chunk = hashlib.sha256(hash_bytes + str(i).encode()).digest()
+        embedding.extend([b / 255.0 for b in chunk])
+    
+    return embedding[:768]  # Ensure exactly 768 dimensions
 
 # 0. PERSISTENT CAMERA MANAGER
 class CameraManager:
@@ -139,11 +236,11 @@ Respond with EXACTLY one of these tags:
 
 Only respond with the tag. No explanation.
 """
-    # Try Gemini 3 or 1.5
-    for model in [MODEL_V3, MODEL_15, _FALLBACK_MODEL]:
+    # Try available models
+    for model in [MODEL_20, MODEL_15, MODEL_LITE, _FALLBACK_MODEL]:
         if model:
             try:
-                response = model.generate_content(prompt)
+                response = _call_generate(model, prompt)
                 tag = response.text.strip().upper()
                 if "OCR" in tag: return "ocr"
                 if "VISION" in tag: return "vision"
@@ -170,7 +267,7 @@ def read_text():
         if not os.path.exists("image.jpg"):
             return "I couldn't find an image to read. Please check the camera."
 
-        models_to_try = [MODEL_V3, MODEL_20, MODEL_15, _FALLBACK_MODEL]
+        models_to_try = [MODEL_20, MODEL_15, MODEL_LITE, _FALLBACK_MODEL]
         for model in models_to_try:
             if model:
                 try:
@@ -178,11 +275,11 @@ def read_text():
                         image_data = f.read()
                     
                     prompt = "Read the text in this image exactly as written. If there is no text, say 'No text detected'. Respond only with the extracted text."
-                    response = model.generate_content(
-                        contents=[{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": image_data}}]
-                    )
+                    response = _call_generate_with_image(model, prompt, image_data)
                     return response.text.strip()
-                except: continue
+                except Exception as e:
+                    print(f"[WARN] OCR model failed: {e}")
+                    continue
 
         return "OCR service is currently unavailable."
     except Exception as e:
@@ -195,24 +292,24 @@ def describe_scene(user_input):
     if not os.path.exists("image.jpg"):
         return "I can't see anything. Please make sure the camera is working."
 
-    models_to_try = [MODEL_V3, MODEL_20, MODEL_15, _FALLBACK_MODEL]
+    models_to_try = [MODEL_20, MODEL_15, MODEL_LITE, _FALLBACK_MODEL]
     for model in models_to_try:
         if model:
             try:
                 with open("image.jpg", "rb") as f:
                     image_data = f.read()
                 prompt = f"You are the eyes for a visually impaired user. Answer: '{user_input}'. Be descriptive but concise."
-                response = model.generate_content(
-                    contents=[{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": image_data}}]
-                )
+                response = _call_generate_with_image(model, prompt, image_data)
                 return response.text.strip()
-            except: continue
+            except Exception as e:
+                print(f"[WARN] Vision model failed: {e}")
+                continue
 
     return "Vision unavailable right now."
 
 # 7. AI RESPONSE FUNCTION
 def generate_response(user_input, memory_context):
-    models_to_try = [MODEL_V3, MODEL_20, MODEL_15, _FALLBACK_MODEL]
+    models_to_try = [MODEL_20, MODEL_15, MODEL_LITE, _FALLBACK_MODEL]
     for model in models_to_try:
         if model:
             try:
@@ -222,9 +319,11 @@ Context: {memory_context}
 User: {user_input}
 Keep response short (1-2 sentences). Respond naturally.
 """
-                response = model.generate_content(prompt)
+                response = _call_generate(model, prompt)
                 if response and response.text:
                     return response.text.strip()
-            except: continue
+            except Exception as e:
+                print(f"[WARN] Chat model failed: {e}")
+                continue
 
     return "I'm sorry, I'm having trouble thinking right now."

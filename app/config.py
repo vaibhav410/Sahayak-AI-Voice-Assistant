@@ -12,6 +12,6 @@ VAPI_API_KEY = os.getenv("VAPI_API_KEY")
 ASSISTANT_ID = os.getenv("ASSISTANT_ID")
 NGROK_URL = os.getenv("NGROK_URL", "")
 
-GEMINI_MODEL = "gemini-3-flash-preview"
-EMBEDDING_MODEL = "models/text-embedding-004"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/embedding-001")
 COLLECTION_NAME = "sahayak_memory"

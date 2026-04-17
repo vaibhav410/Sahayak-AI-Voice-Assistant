@@ -36,6 +36,18 @@ def init_collection():
             print(f"[OK] Collection {COLLECTION_NAME} created.")
         else:
             print(f"[OK] Collection {COLLECTION_NAME} already exists.")
+        
+        # Ensure payload index exists for user_id filtering
+        try:
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="user_id",
+                field_schema=models.PayloadSchemaType.KEYWORD
+            )
+            print("[OK] Payload index for 'user_id' created.")
+        except Exception:
+            pass  # Index may already exist, that's fine
+            
     except Exception as e:
         print(f"[ERROR] Qdrant init failed: {e}")
 

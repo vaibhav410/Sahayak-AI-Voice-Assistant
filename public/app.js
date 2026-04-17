@@ -138,13 +138,17 @@ async function loadMemory() {
 function initVapi() {
     try {
         if (typeof Vapi === 'undefined') {
-            console.warn('Vapi SDK not loaded yet, retrying...');
-            setTimeout(initVapi, 500);
+            console.warn('[VAPI] SDK not loaded yet, retrying...');
+            setTimeout(initVapi, 1000);
             return;
         }
+        
+        console.log('[VAPI] Initializing with key:', CFG.vapi_key.substring(0, 8) + '...');
         vapiInst = new Vapi(CFG.vapi_key);
+        console.log('[VAPI] Instance created:', vapiInst ? 'OK' : 'FAILED');
 
         vapiInst.on('call-start', () => {
+            console.log('[VAPI] Call started');
             vapiOn = true;
             $('vbtn').classList.add('btn-pulse');
             $('vbtn').querySelector('span').textContent = 'call_end';
@@ -154,6 +158,7 @@ function initVapi() {
         });
 
         vapiInst.on('call-end', () => {
+            console.log('[VAPI] Call ended');
             vapiOn = false;
             $('vbtn').classList.remove('btn-pulse', 'bg-error-container', 'text-error');
             $('vbtn').querySelector('span').textContent = 'call';
@@ -161,6 +166,7 @@ function initVapi() {
         });
 
         vapiInst.on('message', (msg) => {
+            console.log('[VAPI] Message:', msg);
             if (msg.type === 'transcript' && msg.transcriptType === 'final') {
                 if (msg.role === 'user') addMsg('user', msg.transcript);
                 if (msg.role === 'assistant') {
@@ -171,16 +177,19 @@ function initVapi() {
         });
 
         vapiInst.on('error', (e) => {
-            console.error('Vapi Error:', e);
+            console.error('[VAPI] Error:', e);
             setDot('vd', 'dr');
-            toast('Vapi connection error');
+            toast('Vapi error: ' + (e.message || 'Connection failed'));
         });
-
+        
+        vapiReady = true;
         setDot('vd', 'ok');
         sysMsg('✓ Voice engine ready');
+        console.log('[VAPI] Ready! Click call button to start');
     } catch (e) {
-        console.warn('Vapi failed to load:', e);
+        console.error('[VAPI] Init failed:', e);
         setDot('vd', 'dr');
+        sysMsg('✗ Voice engine failed: ' + e.message);
     }
 }
 
@@ -219,9 +228,23 @@ $('sbtn').onclick = sendMsg;
 $('txt').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } };
 
 $('vbtn').onclick = () => {
-    if (!vapiInst) return toast('Vapi not initialized');
-    if (vapiOn) vapiInst.stop();
-    else vapiInst.start(CFG.assistant_id);
+    if (!vapiInst) {
+        if (typeof Vapi === 'undefined') {
+            toast('Vapi SDK not loaded - check internet connection');
+            console.error('[VAPI] SDK not loaded. Check if https://cdn.jsdelivr.net/npm/@vapi-ai/web@latest/dist/vapi.iife.js is accessible');
+        } else {
+            toast('Vapi initializing... please wait');
+            console.log('[VAPI] Instance not ready yet, retrying init...');
+            initVapi();
+        }
+        return;
+    }
+    if (vapiOn) {
+        vapiInst.stop();
+    } else {
+        console.log('[VAPI] Starting call with assistant:', CFG.assistant_id);
+        vapiInst.start(CFG.assistant_id);
+    }
 };
 
 $('mbtn').onclick = () => {
@@ -276,6 +299,20 @@ document.querySelectorAll('.tab, .mobile-tab').forEach(tab => {
         setDot('gd', 'dr');
         setDot('qd', 'dr');
     }
+    
+    // Check Vapi backend status
+    const vapiStatus = await apiCall('/api/ngrok-status', 'GET');
+    if (vapiStatus) {
+        console.log('[VAPI] Backend status:', vapiStatus);
+        if (!vapiStatus.vapi_available) {
+            sysMsg('⚠ Vapi backend not available');
+        } else if (!vapiStatus.configured) {
+            sysMsg('⚠ Ngrok URL not configured');
+        } else {
+            sysMsg('✓ Vapi backend ready');
+        }
+    }
+    
     initVapi();
     initFallbackMic();
     loadMemory();
